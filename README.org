@@ -1,0 +1,14 @@
+* natsukashii 懐かしい
+
+/*natsukashii* -- nostalgic, reminiscent of good memories, something that is yearned for./
+
+Natsukashii is an automated web archive scraper for fanfiction.net which is
+designed to find stories which have been deleted from the site a long, long time
+foo ago, to save them from being lost forever.
+
+This is a pet project. I made it because /I/ care about some of these stories, and
+becauce I remember them from decades ago and want to read them again. If you
+like this and find it useful as well, that's awesome.
+
+This project is very much a work in progress and will change all the time (or
+whenever I have time working on it, at least).

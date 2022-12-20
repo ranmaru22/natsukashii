@@ -1,0 +1,2 @@
+(defpackage #:natsukashii
+  (:use #:cl))
