@@ -2,24 +2,30 @@
 
 (defun parse-category (category-array)
   "Create a proper filepath string from CATEGORY-ARRAY."
-  (str:join
-   "/"
-   (map 'list
-        (lambda (str) (str:replace-all " " "-" str))
-        category-array)))
+  (remove-if (lambda (str) (every #'digit-char-p str))
+             (map 'list #'str:pascal-case category-array)))
 
-(defun write-story-to-file (path-components filename story)
-  "Write STORY to FILENAME at path made from PATH-COMPONENTS. Ensure that this path exists."
-  (let ((path (make-pathname :directory `(:relative "out" ,@path-components)))
-        (file (make-pathname :name filename :type "txt")))
+(defun get-current-chapter (dom)
+  "Attempt to get the current chapter as an integer from a story's DOM."
+  (let ((list
+          (coerce
+           (lquery:$ dom "a"
+             (text)
+             (map (lambda (txt)
+                    (ppcre:register-groups-bind (prev next)
+                        ("Previous Chapter \\( (\\d+) \\)|Next Chapter \\( (\\d+) \\)" txt)
+                      (cond
+                        (prev (1+ (parse-integer prev)))
+                        (next (1- (parse-integer next)))))))
+             (filter (complement #'null)))
+           'list)))
 
-    (ensure-directories-exist path)
-    (with-open-file (out
-                     (merge-pathnames path file)
-                     :direction :output
-                     :if-exists :rename
-                     :if-does-not-exist :create)
-      (format out story))))
+    (when (every #'eql list (cdr list)) (car list))))
+
+(defun strip-scripts (node)
+  "Remove all script elements from NODE using lQuery."
+  (lquery:$ node "script" (detach))
+  node)
 
 (defun grab-story (uri timestamp)
   "Attempt to download a story at URI from the Web Archive.
@@ -31,38 +37,91 @@ The TIMESTAMP parameter is for better archiving."
             (dex:http-request-service-unavailable (e)
               (declare (ignore e))))))
 
+    (print (concatenate 'string *web-url* uri))
+
     (when dom
       (let* ((dom (plump:parse dom))
-             (story-title (str:replace-all " " "-" (aref (lquery:$ dom "tr.TableHeading" (text)) 0)))
-             (header-links (lquery:$ dom "tr.TableRow1 a" (text)))
-             (story-category (parse-category (subseq header-links 0 2)))
-             (author (str:replace-all " " "-" (aref header-links 3)))
-             (path-components (list story-category author))
-             (filename (format nil "~a--~a" story-title timestamp))
-             (story (aref (lquery:$ dom "form" (text)) 1)))
-        (write-story-to-file path-components filename story)))))
+             ;; Gotta love 90s website structures. :)
+             (story-title
+               (str:pascal-case
+                (lquery:$1 dom "tr.TableHeading>td.TextWhiteHeading>b" (render-text))))
+             (story-category
+               (parse-category
+                (lquery:$ dom "td.TextBlack>b" (contains "Category:") (next-all "a") (render-text))))
+             (author
+               (str:pascal-case
+                (lquery:$1 dom "td.TextBlack>b" (contains "Author") (next "a") (render-text))))
+             (chapter (get-current-chapter dom))
+             (path (make-pathname :directory `(:relative "out" ,@story-category ,author)))
+             (filename
+               (make-pathname :name (format nil "~a~@[-Ch~A~]--~a" story-title chapter timestamp) :type "html")))
 
-(defun parse-single-cdx-response (line)
+        (ensure-directories-exist path)
+        (lquery:$ dom "body"
+          (each #'strip-scripts :replace t)
+          (write-to-file (merge-pathnames path filename) :if-exists :rename))))))
+
+(defun parse-category-cdx-response (line)
+  "Format one LINE of a CDX response into a URI that works for another CDX query."
+  (caddr (ppcre:split "\\s" line)))
+
+(defun parse-story-cdx-response (line)
   "Format one LINE of a CDX response into a URI that works with the Web Archive.
 Also return the timestamp of the memento for easy sorting"
   (destructuring-bind (url-key timestamp original mimetype statuscode digest length)
       (ppcre:split "\\s" line)
-    (declare (ignore url-key mimetype statuscode digest length))
-    (list
-     (format nil "~a/~a" timestamp original)
-     timestamp)))
+    (declare (ignore url-key mimetype digest length))
+    (when (string= statuscode "200")
+      (list
+       (format nil "~a/~a" timestamp original)
+       timestamp))))
 
-(defun save-story (id)
-  "Attempt to grab an archived story with ID and save it."
+(defmacro with-cdx-query ((uri &key map-with) &body body)
+  "Fire a query against the CDX API with URI and then execute BODY with the result.
+Optionally map the results with MAP-WITH.
+The macro provides the anaphors RESPONSE and STATUS-CODE."
+  (let ((return-value (gensym)))
+    `(multiple-value-bind (,return-value status-code) (dex:get (concatenate 'string *cdx-url* ,uri))
+       (when (and (eql status-code 200) (str:non-empty-string-p ,return-value))
+         (let ((response
+                 (if ,map-with
+                     (mapcar ,map-with (ppcre:split "\\n" ,return-value))
+                     (ppcre:split "\\n" ,return-value))))
+           ,@body)))))
+
+(defun save-story (story-uri)
+  "Attempt to grab an archived story with from STORY-URI and save it."
+  (let ((target-uri (quri:url-encode story-uri)))
+    (with-cdx-query (target-uri :map-with #'parse-story-cdx-response)
+      (loop :for (memento-uri timestamp) :in response
+            :when memento-uri
+              :do (grab-story memento-uri timestamp)))))
+
+(defun get-list-of-stories-in-category (category)
+  "Find a list of stories under CATEGORY in the CDX API."
   (let ((target-uri
           (quri:url-encode
-           ;; TODO: needt to work with more generic URIs
-           ;; Or better, we need to programmatically find stories that work
-           (format nil "http://fanfiction.net:80/sections/anime/index.fic?action=story-read&storyid=~d" id))))
+           (format nil "http://fanfiction.net/sections/~a/index.fic?action=story-read*" category))))
 
-    (multiple-value-bind (return-value status-code) (dex:get (concatenate 'string *cdx-url* target-uri))
-      (when (and (eql status-code 200) (str:non-empty-string-p return-value))
-        (let ((mementos (mapcar #'parse-single-cdx-response (ppcre:split "\\n" return-value))))
+    (with-cdx-query (target-uri :map-with #'parse-category-cdx-response)
+      (loop :for story-uri :in response
+            :for x :from 0 :to 20
+            :do (save-story story-uri)))))
 
-          (loop :for (memento-uri timestamp) :in mementos
-                :do (grab-story memento-uri timestamp)))))))
+(defun find-archived-stories ()
+  "Find a list of stories which have been archived using the CDX API.
+The categories are hardcoded in because there's no nice way of getting them
+programatically, also they don't change anyway."
+  (mapcan #'get-list-of-stories-in-category
+          '("anime"
+            "books"
+            "cartoons"
+            "comics"
+            "crossovers"
+            "games"
+            "misc"
+            "movies"
+            "musicgroups"
+            "originals"
+            "poetries"
+            "tvshows")))
