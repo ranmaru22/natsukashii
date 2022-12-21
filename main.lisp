@@ -37,8 +37,6 @@ The TIMESTAMP parameter is for better archiving."
             (dex:http-request-service-unavailable (e)
               (declare (ignore e))))))
 
-    (print (concatenate 'string *web-url* uri))
-
     (when dom
       (let* ((dom (plump:parse dom))
              ;; Gotta love 90s website structures. :)
@@ -56,10 +54,19 @@ The TIMESTAMP parameter is for better archiving."
              (filename
                (make-pathname :name (format nil "~a~@[-Ch~A~]--~a" story-title chapter timestamp) :type "html")))
 
-        (ensure-directories-exist path)
-        (lquery:$ dom "body"
-          (each #'strip-scripts :replace t)
-          (write-to-file (merge-pathnames path filename) :if-exists :rename))))))
+        (when story-category
+          ;; DEBUG: Let's print some info so we know it works
+          (format t "~%Finished fetching '~a' by ~a in ~{~a~^/~}~%" story-title author story-category)
+          (format t "~a~%" (concatenate 'string *web-url* uri))
+
+          (handler-case (lquery:$ dom "body"
+                          (each #'strip-scripts :replace t)
+                          (write-to-file (merge-pathnames path filename) :if-exists :rename))
+
+            (plump-dom:invalid-xml-character (e)
+              ;; I don't like ignoring errors. We should handle this ...
+              (declare (ignore e))
+              (format t "There was an invalid character in the response. :("))))))))
 
 (defun parse-category-cdx-response (line)
   "Format one LINE of a CDX response into a URI that works for another CDX query."
@@ -105,7 +112,6 @@ The macro provides the anaphors RESPONSE and STATUS-CODE."
 
     (with-cdx-query (target-uri :map-with #'parse-category-cdx-response)
       (loop :for story-uri :in response
-            :for x :from 0 :to 20
             :do (save-story story-uri)))))
 
 (defun find-archived-stories ()
