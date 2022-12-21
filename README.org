@@ -2,9 +2,11 @@
 
 /*natsukashii* -- nostalgic, reminiscent of good memories, something that is yearned for./
 
+** About
+
 Natsukashii is an automated web archive scraper for fanfiction.net which is
 designed to find stories which have been deleted from the site a long, long time
-foo ago, to save them from being lost forever.
+ago, to save them from being lost forever.
 
 This is a pet project. I made it because /I/ care about some of these stories, and
 becauce I remember them from decades ago and want to read them again. If you
@@ -12,3 +14,27 @@ like this and find it useful as well, that's awesome.
 
 This project is very much a work in progress and will change all the time (or
 whenever I have time working on it, at least).
+
+
+** Warning! Here be Bugs!
+
+This tool isn't battle-tested. Running it against the various APIs does produce
+errors now and then. I strongly recommend running it inside a REPL so you can
+fix these errors on the go.
+
+You can also better interact with the individual functions that way. This is
+written in Common Lisp for a reason. ;)
+
+
+** How to use
+
+Assuming you cloned the repo into any of the folders inside Quicklisp's
+~*local-project-directories*~, this should be enough to load it:
+
+#+begin_src lisp
+  (ql:quickload :natsukashii)
+  (in-package :natsukashii)
+#+end_src
+
+More detailed documentation will come. For now, check the code to see what's
+available.

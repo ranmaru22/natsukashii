@@ -14,5 +14,7 @@
                #:lquery
                #:lparallel)
   :components ((:file "package")
-               (:file "config")
-               (:file "main")))
+               (:file "config" :depends-on ("package"))
+               (:file "utils" :depends-on ("config"))
+               (:file "scraper-old" :depends-on ("utils"))
+               (:file "main" :depends-on ("scraper-old"))))
