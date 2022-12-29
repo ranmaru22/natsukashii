@@ -64,29 +64,21 @@ The TIMESTAMP parameter is for better archiving."
               (declare (ignore e))
               (format t "There was an invalid character in the response. :("))))))))
 
-(defun old--save-story (story-uri)
-  "Attempt to grab an archived story with from STORY-URI and save it."
-  (let ((target-uri (quri:url-encode story-uri)))
-    (with-cdx-query (target-uri :map-with #'parse-story-cdx-response)
-      (loop :for (memento-uri timestamp) :in response
-            :when memento-uri
-              :do (old--fetch-story memento-uri timestamp)))))
-
-(defun old--get-list-of-stories-in-category (category)
-  "Find a list of stories under CATEGORY in the CDX API."
+(defun old--fetch-stories-in-category (category)
+  "Attempt to grab all archived stories in CATEGORY."
   (let ((target-uri
           (quri:url-encode
-           (format nil "http://fanfiction.net/sections/~a/index.fic?action=story-read*" category))))
+           (format nil "fanfiction.net/sections/~a/index.fic?action=story-read*" category))))
 
     (with-cdx-query (target-uri :map-with #'parse-category-cdx-response)
-      (loop :for story-uri :in response
-            :do (old--save-story story-uri)))))
+      (loop :for (memento-uri timestamp) :in response
+            :do (old--fetch-story (format nil "~a/~a" timestamp memento-uri) timestamp)))))
 
 (defun old--find-archived-stories ()
   "Find a list of stories which have been archived using the CDX API.
 The categories are hardcoded in because there's no nice way of getting them
 programatically, also they don't change anyway."
-  (mapcan #'old--get-list-of-stories-in-category
+  (mapcan #'old--fetch-stories-in-category
           '("anime"
             "books"
             "cartoons"

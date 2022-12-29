@@ -27,7 +27,11 @@ The macro provides the anaphors RESPONSE and STATUS-CODE."
 
 (defun parse-category-cdx-response (line)
   "Format one LINE of a CDX response into a URI that works for another CDX query."
-  (caddr (ppcre:split "\\s" line)))
+  (destructuring-bind (url-key timestamp original mimetype statuscode digest length)
+      (ppcre:split "\\s" line)
+    (declare (ignore url-key mimetype digest length))
+    (when (string= statuscode "200")
+      (list original timestamp))))
 
 (defun parse-story-cdx-response (line)
   "Format one LINE of a CDX response into a URI that works with the Web Archive.
