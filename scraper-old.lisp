@@ -55,6 +55,7 @@ The TIMESTAMP parameter is for better archiving."
           (format t "~%Finished fetching '~a' by ~a in ~{~a~^/~}~%" story-title author story-category)
           (format t "~a~%" (concatenate 'string *web-url* uri))
 
+          (ensure-directories-exist path)
           (handler-case (lquery:$ dom "body"
                           (each #'strip-scripts :replace t)
                           (write-to-file (merge-pathnames path filename) :if-exists :rename))
@@ -62,7 +63,9 @@ The TIMESTAMP parameter is for better archiving."
             (plump-dom:invalid-xml-character (e)
               ;; I don't like ignoring errors. We should handle this ...
               (declare (ignore e))
-              (format t "There was an invalid character in the response. :("))))))))
+              (format t "There was an invalid character in the response. :(")
+              (unless (directory (merge-pathnames path "*.html"))
+                (uiop:delete-directory-tree path :validate t)))))))))
 
 (defun old--fetch-stories-in-category (category)
   "Attempt to grab all archived stories in CATEGORY."
