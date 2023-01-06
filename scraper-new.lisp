@@ -6,6 +6,21 @@
 
 (in-package :natsukashii)
 
+(defun new--get-current-chapter (dom)
+  "Attempt to get the current chapter as an integer from a story's DOM."
+  (let ((list
+          (coerce
+           (lquery:$ dom "script"
+             (render-text)
+             (map (lambda (txt)
+                    (ppcre:register-groups-bind (chapter)
+                        ("var chapter = (\\d);" txt)
+                      chapter)))
+             (filter (complement #'null)))
+           'list)))
+
+    (when (every #'eql list (cdr list)) (car list))))
+
 (defun new--fetch-story (uri timestamp)
   "Attempt to download a story at URI from the Web Archive.
 The TIMESTAMP parameter is for better archiving."
@@ -16,7 +31,7 @@ The TIMESTAMP parameter is for better archiving."
             (dex:http-request-service-unavailable (e)
               (declare (ignore e))))))
 
- (when dom
+    (when dom
       (let* ((dom (plump:parse dom))
              ;; Gotta love 90s website structures. :)
              (first-cat-index
@@ -43,15 +58,28 @@ The TIMESTAMP parameter is for better archiving."
                (str:pascal-case
                 (cadr (find "profile.php"
                             (lquery:$ dom "td a" (combine (attr :href) (render-text)))
-                            :key #'car :test #'str:containsp))
-                ))
-             (chapter (old--get-current-chapter dom))
+                            :key #'car :test #'str:containsp))))
+             (chapter (new--get-current-chapter dom))
              (path (make-pathname :directory `(:relative "out" ,@story-category ,author)))
              (filename
                (make-pathname :name (format nil "~a~@[-Ch~A~]--~a" story-title chapter timestamp) :type "html")))
 
-        (list story-title story-category author path filename)
-        ))))
+        (when story-category
+          ;; DEBUG: Let's print some info so we know it works
+          (format t "~%Finished fetching '~a' by ~a in ~{~a~^/~}~%" story-title author story-category)
+          (format t "~a~%" (concatenate 'string *web-url* uri))
+
+          (ensure-directories-exist path)
+          (handler-case (lquery:$ dom "body"
+                          (each #'strip-scripts :replace t)
+                          (write-to-file (merge-pathnames path filename) :if-exists :rename))
+
+            (plump-dom:invalid-xml-character (e)
+              ;; I don't like ignoring errors. We should handle this ...
+              (declare (ignore e))
+              (format t "There was an invalid character in the response. :(")
+              (unless (directory (merge-pathnames path "*.html"))
+                (uiop:delete-directory-tree path :validate t)))))))))
 
 (defun new--fetch-all-stories ()
   "Attempt to fetch all stories that have been archived."
