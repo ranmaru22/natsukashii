@@ -15,6 +15,11 @@ The macro provides the anaphors RESPONSE and STATUS-CODE."
                      (ppcre:split "\\n" ,return-value))))
            ,@body)))))
 
+(defstruct memento
+  (url-key "" :type string :read-only t)
+  (timestamp "" :type string :read-only t))
+  (url "" :type string :read-only t)
+
 (defun format-categories (category-array)
   "Format strings in CATEGORY-ARRAY so that they work as filepaths."
   (remove-if (lambda (str) (every #'digit-char-p str))
@@ -25,21 +30,10 @@ The macro provides the anaphors RESPONSE and STATUS-CODE."
   (lquery:$ node "script" (detach))
   node)
 
-(defun parse-category-cdx-response (line)
-  "Format one LINE of a CDX response into a URI that works for another CDX query."
+(defun parse-cdx-response (line)
+  "Format one LINE of a CDX response into a `memento'."
   (destructuring-bind (url-key timestamp original mimetype statuscode digest length)
       (ppcre:split "\\s" line)
-    (declare (ignore url-key mimetype digest length))
+    (declare (ignore mimetype digest length))
     (when (string= statuscode "200")
-      (list original timestamp))))
-
-(defun parse-story-cdx-response (line)
-  "Format one LINE of a CDX response into a URI that works with the Web Archive.
-Also return the timestamp of the memento for easy sorting"
-  (destructuring-bind (url-key timestamp original mimetype statuscode digest length)
-      (ppcre:split "\\s" line)
-    (declare (ignore url-key mimetype digest length))
-    (when (string= statuscode "200")
-      (list
-       (format nil "~a/~a" timestamp original)
-       timestamp))))
+      (make-memento :url-key url-key :url original :timestamp timestamp))))

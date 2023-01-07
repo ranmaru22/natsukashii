@@ -21,15 +21,16 @@
 
     (when (every #'eql list (cdr list)) (car list))))
 
-(defun new--fetch-story (uri timestamp)
-  "Attempt to download a story at URI from the Web Archive.
-The TIMESTAMP parameter is for better archiving."
-  (let ((dom
-          (handler-case (dex:get (concatenate 'string *web-url* uri))
-            (dex:http-request-not-found (e)
-              (declare (ignore e)))
-            (dex:http-request-service-unavailable (e)
-              (declare (ignore e))))))
+(defun new--fetch-story (memento)
+  "Attempt to download a story from MEMENTO from the Web Archive."
+  (let* ((timestamp (memento-timestamp memento))
+         (uri (format nil "~a/~a" timestamp (memento-url memento)))
+         (dom
+           (handler-case (dex:get (concatenate 'string *web-url* uri))
+             (dex:http-request-not-found (e)
+               (declare (ignore e)))
+             (dex:http-request-service-unavailable (e)
+               (declare (ignore e))))))
 
     (when dom
       (let* ((dom (plump:parse dom))
@@ -84,6 +85,5 @@ The TIMESTAMP parameter is for better archiving."
 (defun new--fetch-all-stories ()
   "Attempt to fetch all stories that have been archived."
   (let ((target-uri (quri:url-encode "fanfiction.net/read.php?storyid=*")))
-    (with-cdx-query (target-uri :map-with #'parse-category-cdx-response)
-      (loop :for (memento-uri timestamp) :in response
-            :do (new--fetch-story (format nil "~a/~a" timestamp memento-uri) timestamp)))))
+    (with-cdx-query (target-uri :map-with #'parse-cdx-response)
+      (mapcan #'new--fetch-story (remove-if #'null response)))))

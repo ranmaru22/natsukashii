@@ -23,15 +23,16 @@
 
     (when (every #'eql list (cdr list)) (car list))))
 
-(defun old--fetch-story (uri timestamp)
-  "Attempt to download a story at URI from the Web Archive.
-The TIMESTAMP parameter is for better archiving."
-  (let ((dom
-          (handler-case (dex:get (concatenate 'string *web-url* uri))
-            (dex:http-request-not-found (e)
-              (declare (ignore e)))
-            (dex:http-request-service-unavailable (e)
-              (declare (ignore e))))))
+(defun old--fetch-story (memento)
+  "Attempt to download a story from MEMENTO from the Web Archive."
+  (let* ((timestamp (memento-timestamp memento))
+         (uri (format nil "~a/~a" timestamp (memento-url memento)))
+         (dom
+           (handler-case (dex:get (concatenate 'string *web-url* uri))
+             (dex:http-request-not-found (e)
+               (declare (ignore e)))
+             (dex:http-request-service-unavailable (e)
+               (declare (ignore e))))))
 
     (when dom
       (let* ((dom (plump:parse dom))
@@ -72,10 +73,8 @@ The TIMESTAMP parameter is for better archiving."
   (let ((target-uri
           (quri:url-encode
            (format nil "fanfiction.net/sections/~a/index.fic?action=story-read*" category))))
-
-    (with-cdx-query (target-uri :map-with #'parse-category-cdx-response)
-      (loop :for (memento-uri timestamp) :in response
-            :do (old--fetch-story (format nil "~a/~a" timestamp memento-uri) timestamp)))))
+    (with-cdx-query (target-uri :map-with #'parse-cdx-response)
+      (mapcan #'old--fetch-story (remove-if #'null response)))))
 
 (defun old--find-archived-stories ()
   "Find a list of stories which have been archived using the CDX API.
