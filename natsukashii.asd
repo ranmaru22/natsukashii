@@ -17,4 +17,5 @@
                (:file "config" :depends-on ("package"))
                (:file "utils" :depends-on ("config"))
                (:file "scraper-old" :depends-on ("utils"))
-               (:file "main" :depends-on ("scraper-old"))))
+               (:file "scraper-new" :depends-on ("utils"))
+               (:file "main" :depends-on ("scraper-old" "scraper-new"))))

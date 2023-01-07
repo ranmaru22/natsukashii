@@ -1,29 +1,27 @@
-;;;; The scraper for the old version of fanfiction.net (2001 and before).
+;;;; The scraper for the new version of fanfiction.net (after 2001).
 ;;;;
-;;;; That site did not have proper design and didn't follow standards, so
-;;;; parsing it can be a pain and usually involves reading text content of nodes
-;;;; and such things.
+;;;; While nicer to work with from a web design point-of-view, we also
+;;;; have to handle way more data with this one, so it has to be better
+;;;; optimized.
 
 (in-package :natsukashii)
 
-(defun old--get-current-chapter (dom)
+(defun new--get-current-chapter (dom)
   "Attempt to get the current chapter as an integer from a story's DOM."
   (let ((list
           (coerce
-           (lquery:$ dom "a"
-             (text)
+           (lquery:$ dom "script"
+             (render-text)
              (map (lambda (txt)
-                    (ppcre:register-groups-bind (prev next)
-                        ("Previous Chapter \\( (\\d+) \\)|Next Chapter \\( (\\d+) \\)" txt)
-                      (cond
-                        (prev (1+ (parse-integer prev)))
-                        (next (1- (parse-integer next)))))))
+                    (ppcre:register-groups-bind (chapter)
+                        ("var chapter = (\\d);" txt)
+                      chapter)))
              (filter (complement #'null)))
            'list)))
 
     (when (every #'eql list (cdr list)) (car list))))
 
-(defun old--fetch-story (memento)
+(defun new--fetch-story (memento)
   "Attempt to download a story from MEMENTO from the Web Archive."
   (let* ((timestamp (memento-timestamp memento))
          (uri (format nil "~a/~a" timestamp (memento-url memento)))
@@ -37,16 +35,32 @@
     (when dom
       (let* ((dom (plump:parse dom))
              ;; Gotta love 90s website structures. :)
+             (first-cat-index
+               (position "subcats.php"
+                         (lquery:$ dom "td a" (combine (attr :href) (render-text)))
+                         :key #'car :test #'str:containsp))
+             (last-cat-index
+               (position "list.php"
+                         (lquery:$ dom "td a" (combine (attr :href) (render-text)))
+                         :start (1+ (or first-cat-index 0))
+                         :key #'car :test (complement #'str:containsp)))
              (story-title
                (str:pascal-case
-                (lquery:$1 dom "tr.TableHeading>td.TextWhiteHeading>b" (render-text))))
+                (lquery:$1 dom "td a~b" (render-text))))
              (story-category
                (format-categories
-                (lquery:$ dom "td.TextBlack>b" (contains "Category:") (next-all "a") (render-text))))
+                (map 'list #'cadr
+                     (subseq
+                      (lquery:$ dom "td a"
+                        (combine (attr :href) (render-text)))
+                      first-cat-index
+                      last-cat-index))))
              (author
                (str:pascal-case
-                (lquery:$1 dom "td.TextBlack>b" (contains "Author") (next "a") (render-text))))
-             (chapter (old--get-current-chapter dom))
+                (cadr (find "profile.php"
+                            (lquery:$ dom "td a" (combine (attr :href) (render-text)))
+                            :key #'car :test #'str:containsp))))
+             (chapter (new--get-current-chapter dom))
              (path (make-pathname :directory `(:relative "out" ,@story-category ,author)))
              (filename
                (make-pathname :name (format nil "~a~@[-Ch~A~]--~a" story-title chapter timestamp) :type "html")))
@@ -68,28 +82,8 @@
               (unless (directory (merge-pathnames path "*.html"))
                 (uiop:delete-directory-tree path :validate t)))))))))
 
-(defun old--fetch-stories-in-category (category)
-  "Attempt to grab all archived stories in CATEGORY."
-  (let ((target-uri
-          (quri:url-encode
-           (format nil "fanfiction.net/sections/~a/index.fic?action=story-read*" category))))
+(defun new--fetch-all-stories ()
+  "Attempt to fetch all stories that have been archived."
+  (let ((target-uri (quri:url-encode "fanfiction.net/read.php?storyid=*")))
     (with-cdx-query (target-uri :map-with #'parse-cdx-response)
-      (mapcan #'old--fetch-story (remove-if #'null response)))))
-
-(defun old--find-archived-stories ()
-  "Find a list of stories which have been archived using the CDX API.
-The categories are hardcoded in because there's no nice way of getting them
-programatically, also they don't change anyway."
-  (mapcan #'old--fetch-stories-in-category
-          '("anime"
-            "books"
-            "cartoons"
-            "comics"
-            "crossovers"
-            "games"
-            "misc"
-            "movies"
-            "musicgroups"
-            "originals"
-            "poetries"
-            "tvshows")))
+      (mapcan #'new--fetch-story (remove-if #'null response)))))
