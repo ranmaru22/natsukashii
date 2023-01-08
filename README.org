@@ -1,6 +1,6 @@
 * natsukashii 懐かしい
 
-/*natsukashii* -- nostalgic, reminiscent of good memories, something that is yearned for./
+*natsukashii* -- /nostalgic, reminiscent of good memories, something that is yearned for./
 
 ** About
 
@@ -25,7 +25,7 @@ fix these errors on the go.
 You can also better interact with the individual functions that way. This is
 written in Common Lisp for a reason.
 
-*** Known issuesn
+*** Known issues
 - Most stories have only one archived chapter. This is mostly chapter 1 but it
   might be a later one, too. Because each chapter is its own archived memento,
   they all get processed as single files. So you will have =Story1-Ch1= and
@@ -38,6 +38,11 @@ written in Common Lisp for a reason.
   fails. This is usually the case when the memento only contains "Story not
   found" (in which case it's supposed to not pull it!) but it could have false
   positives too.
+- Some stories contain invalid XML chracters. Note that most of them were
+  written before everything went Unicode. The parser tries its best to just work
+  with those (you might get weird black blocks in the output sometimes, though),
+  but sometimes it can't. In those cases, the story won't be fetched.
+
 
 ** How to use
 
@@ -52,6 +57,8 @@ Assuming you cloned the repo into any of the folders inside Quicklisp's
 You have then two different sets of scrapers, ~old--~ and ~new--~. This is because
 the whole website structure of ff.net changed in September 2001 and you
 essentially have to process any memento from before that different.
+
+*** Scraper for old stories (pre September 2001)
 
 To use the old scraper you can do this:
 
@@ -82,6 +89,8 @@ of:
 - "poetries"
 - "tvshows"
 
+*** Scraper for newer stories (Septemter 2001 and later)
+
 The new scraper works a bit different. You use it like this:
 
 #+begin_src lisp
@@ -98,8 +107,21 @@ That way you don't have to download all of them in one go, which might take a
 very long time, and is error-prone b/c sometimes the Wayback API is very slow
 and unresponsive (but it's free, so no bad feelings about it)!
 
-Also please respect that this API is free and don't fire thousands of requests
-against it. Be respectful!
+The initial CDX response will be saved in the special variable
+~*all-stories-cdx-response*~ which is available to you as well. If you want to
+access one story specifically, you can call ~nth~ on that list to get the memento
+out. It'll contain the URL that the Wayback Machine wants so you can put it in
+there and view the memento online as well (e.g. to check a story that has failed
+to download).
 
-More detailed documentation will come. For now, check the code to see what's
-available.
+You can also attempt to fetch a single story by using the memento for it:
+
+#+begin_src lisp
+  (new--fetch-story memento)
+#+end_src
+
+
+** A word of advice
+
+Please respect that this API is free and don't fire thousands of requests
+against it. Be respectful!
