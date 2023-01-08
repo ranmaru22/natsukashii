@@ -68,28 +68,32 @@
               (unless (directory (merge-pathnames path "*.html"))
                 (uiop:delete-directory-tree path :validate t)))))))))
 
-(defun old--fetch-stories-in-category (category)
+(defun old--fetch-stories-in-category (category &key (threads 8))
   "Attempt to grab all archived stories in CATEGORY."
   (let ((target-uri
           (quri:url-encode
            (format nil "fanfiction.net/sections/~a/index.fic?action=story-read*" category))))
+
+    (unless lparallel:*kernel*
+      (setf lparallel:*kernel* (lparallel:make-kernel threads)))
+
     (with-cdx-query (target-uri :map-with #'parse-cdx-response)
-      (mapcan #'old--fetch-story (remove-if #'null response)))))
+      (lparallel:pmapc #'old--fetch-story (remove-if #'null response)))))
 
 (defun old--find-archived-stories ()
   "Find a list of stories which have been archived using the CDX API.
 The categories are hardcoded in because there's no nice way of getting them
 programatically, also they don't change anyway."
-  (mapcan #'old--fetch-stories-in-category
-          '("anime"
-            "books"
-            "cartoons"
-            "comics"
-            "crossovers"
-            "games"
-            "misc"
-            "movies"
-            "musicgroups"
-            "originals"
-            "poetries"
-            "tvshows")))
+  (mapc #'old--fetch-stories-in-category
+        '("anime"
+          "books"
+          "cartoons"
+          "comics"
+          "crossovers"
+          "games"
+          "misc"
+          "movies"
+          "musicgroups"
+          "originals"
+          "poetries"
+          "tvshows")))

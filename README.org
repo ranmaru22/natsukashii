@@ -68,7 +68,9 @@ To use the old scraper you can do this:
 
 This will pull *everything* that was archived under the old website (pre
 2001-11). This isn't too much, about 3000 pages give or take, so pulling them
-all is possible in one go. For more fine grained controll you can use these:
+all is possible in one go.
+
+For more fine grained controll you can use these:
 
 #+begin_src lisp
   (old--fetch-stories-in-category "anime")
@@ -89,6 +91,10 @@ of:
 - "poetries"
 - "tvshows"
 
+The function is concurrent, and will by default run eight threads in
+parallel. You can change this value by using the keyword argument ~:threads~, but
+please keep in mind that firing too many requests at one is a strain on the API.
+
 *** Scraper for newer stories (Septemter 2001 and later)
 
 The new scraper works a bit different. You use it like this:
@@ -106,6 +112,9 @@ set to whatever was returned in the last iteration to continue.
 That way you don't have to download all of them in one go, which might take a
 very long time, and is error-prone b/c sometimes the Wayback API is very slow
 and unresponsive (but it's free, so no bad feelings about it)!
+
+This function also is concurrent and runs eight threads by default. Again, you
+can change this with the ~:threads~ keyword.
 
 The initial CDX response will be saved in the special variable
 ~*all-stories-cdx-response*~ which is available to you as well. If you want to

@@ -82,8 +82,8 @@ don't have to refetch it every time as it can be quite huge.")
           (format t "~a~%" (concatenate 'string *web-url* uri))
 
           (ensure-directories-exist path)
-          (handler-case (lquery:$ dom "body"
-                          (each #'strip-scripts :replace t)
+          (handler-case (lquery:$1 dom "body"
+                          (strip-scripts)
                           (write-to-file (merge-pathnames path filename) :if-exists :rename))
 
             (plump-dom:invalid-xml-character (e)
@@ -93,7 +93,7 @@ don't have to refetch it every time as it can be quite huge.")
               (unless (directory (merge-pathnames path "*.html"))
                 (uiop:delete-directory-tree path :validate t)))))))))
 
-(defun new--fetch-all-stories (&key (from 0) (process 10))
+(defun new--fetch-all-stories (&key (from 0) (process 10) (threads 8))
   "Attempt to fetch all stories that have been archived."
   (let ((target-uri (quri:url-encode "fanfiction.net/read.php?storyid=*")))
 
@@ -101,10 +101,10 @@ don't have to refetch it every time as it can be quite huge.")
       (with-cdx-query (target-uri :map-with #'parse-cdx-response)
         (setf *all-stories-cdx-response* (remove-if #'null response))))
 
-    (loop :with mementos := (nthcdr from *all-stories-cdx-response*)
-          :for memento :in mementos
-          :for i :below process
-          :do (format t "~%Attempting to fetch story ~a" (+ from i))
-              (new--fetch-story memento))
+    (unless lparallel:*kernel*
+      (setf lparallel:*kernel* (lparallel:make-kernel threads)))
+
+    (let ((pool (subseq *all-stories-cdx-response* from (+ from process))))
+      (lparallel:pmapc #'new--fetch-story pool))
 
     (+ from process)))
