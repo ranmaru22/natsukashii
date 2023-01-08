@@ -64,7 +64,7 @@
             (plump-dom:invalid-xml-character (e)
               ;; I don't like ignoring errors. We should handle this ...
               (declare (ignore e))
-              (format t "There was an invalid character in the response. :(")
+              (format t "There was an invalid character in the response. :(~%")
               (unless (directory (merge-pathnames path "*.html"))
                 (uiop:delete-directory-tree path :validate t)))))))))
 
