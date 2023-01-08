@@ -17,8 +17,8 @@ The macro provides the anaphors RESPONSE and STATUS-CODE."
 
 (defstruct memento
   (url-key "" :type string :read-only t)
-  (timestamp "" :type string :read-only t))
-  (url "" :type string :read-only t)
+  (timestamp "" :type string :read-only t)
+  (url "" :type string :read-only t))
 
 (defun format-categories (category-array)
   "Format strings in CATEGORY-ARRAY so that they work as filepaths."

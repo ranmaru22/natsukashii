@@ -23,8 +23,21 @@ errors now and then. I strongly recommend running it inside a REPL so you can
 fix these errors on the go.
 
 You can also better interact with the individual functions that way. This is
-written in Common Lisp for a reason. ;)
+written in Common Lisp for a reason.
 
+*** Known issuesn
+- Most stories have only one archived chapter. This is mostly chapter 1 but it
+  might be a later one, too. Because each chapter is its own archived memento,
+  they all get processed as single files. So you will have =Story1-Ch1= and
+  =Story1-Ch2= as two files.
+- On a related note, stories that only have one chapter and are pulled through
+  the new scraper (the one that processes mementos from 2002 and later) will be
+  tagged with =Ch1=. This is because ff.net does tag it like that internally and
+  there's really no clean way of detecting this (other than analyzing the DOM).
+- The scraper might miss stories if the extraction of title and/or categories
+  fails. This is usually the case when the memento only contains "Story not
+  found" (in which case it's supposed to not pull it!) but it could have false
+  positives too.
 
 ** How to use
 
@@ -35,6 +48,58 @@ Assuming you cloned the repo into any of the folders inside Quicklisp's
   (ql:quickload :natsukashii)
   (in-package :natsukashii)
 #+end_src
+
+You have then two different sets of scrapers, ~old--~ and ~new--~. This is because
+the whole website structure of ff.net changed in September 2001 and you
+essentially have to process any memento from before that different.
+
+To use the old scraper you can do this:
+
+#+begin_src lisp
+  (old--find-archived-stories)
+#+end_src
+
+This will pull *everything* that was archived under the old website (pre
+2001-11). This isn't too much, about 3000 pages give or take, so pulling them
+all is possible in one go. For more fine grained controll you can use these:
+
+#+begin_src lisp
+  (old--fetch-stories-in-category "anime")
+#+end_src
+
+Where instead of "anime" you can use any of the old category names, which is one
+of:
+- "anime"
+- "books"
+- "cartoons"
+- "comics"
+- "crossovers"
+- "games"
+- "misc"
+- "movies"
+- "musicgroups"
+- "originals"
+- "poetries"
+- "tvshows"
+
+The new scraper works a bit different. You use it like this:
+
+#+begin_src lisp
+  (new--fetch-all-stories :from 0 :process 100)
+#+end_src
+
+This will then first pull a list of *all* available stories from the CDX API
+(which should be over 60,000), and then attempt to download 100 of them,
+starting at index 0. The function will return the index at which it stopped
+pulling, so to continue later, you can simply call the function again with ~:from~
+set to whatever was returned in the last iteration to continue.
+
+That way you don't have to download all of them in one go, which might take a
+very long time, and is error-prone b/c sometimes the Wayback API is very slow
+and unresponsive (but it's free, so no bad feelings about it)!
+
+Also please respect that this API is free and don't fire thousands of requests
+against it. Be respectful!
 
 More detailed documentation will come. For now, check the code to see what's
 available.
