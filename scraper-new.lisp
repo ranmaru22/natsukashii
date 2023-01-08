@@ -103,7 +103,8 @@ don't have to refetch it every time as it can be quite huge.")
 
     (loop :with mementos := (nthcdr from *all-stories-cdx-response*)
           :for memento :in mementos
-          :for i :to process
-          :do (new--fetch-story memento))
+          :for i :below process
+          :do (format t "~%Attempting to fetch story ~a" (+ from i))
+              (new--fetch-story memento))
 
     (+ from process)))
