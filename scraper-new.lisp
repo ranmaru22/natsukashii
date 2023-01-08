@@ -3,8 +3,17 @@
 ;;;; While nicer to work with from a web design point-of-view, we also
 ;;;; have to handle way more data with this one, so it has to be better
 ;;;; optimized.
+;;;;
+;;;; There is no way to conveniently group the mementos by category here
+;;;; because all stories are just accessed using generic read.php URIs
+;;;; and a database ID. That's kinda unfortunate because it means that
+;;;; pulling all of them means processing a giant list in one go.
 
 (in-package :natsukashii)
+
+(defvar *all-stories-cdx-response* '()
+  "Special variable to hold the initial response from the CDX API, so we
+don't have to refetch it every time as it can be quite huge.")
 
 (defun new--get-current-chapter (dom)
   "Attempt to get the current chapter as an integer from a story's DOM."
@@ -40,21 +49,23 @@
                          (lquery:$ dom "td a" (combine (attr :href) (render-text)))
                          :key #'car :test #'str:containsp))
              (last-cat-index
-               (position "list.php"
-                         (lquery:$ dom "td a" (combine (attr :href) (render-text)))
-                         :start (1+ (or first-cat-index 0))
-                         :key #'car :test (complement #'str:containsp)))
+               (when first-cat-index
+                 (position "list.php"
+                           (lquery:$ dom "td a" (combine (attr :href) (render-text)))
+                           :start (1+ first-cat-index)
+                           :key #'car :test (complement #'str:containsp))))
              (story-title
                (str:pascal-case
                 (lquery:$1 dom "td a~b" (render-text))))
              (story-category
-               (format-categories
-                (map 'list #'cadr
-                     (subseq
-                      (lquery:$ dom "td a"
-                        (combine (attr :href) (render-text)))
-                      first-cat-index
-                      last-cat-index))))
+               (when first-cat-index
+                 (format-categories
+                  (map 'list #'cadr
+                       (subseq
+                        (lquery:$ dom "td a"
+                          (combine (attr :href) (render-text)))
+                        first-cat-index
+                        last-cat-index)))))
              (author
                (str:pascal-case
                 (cadr (find "profile.php"
@@ -65,7 +76,7 @@
              (filename
                (make-pathname :name (format nil "~a~@[-Ch~A~]--~a" story-title chapter timestamp) :type "html")))
 
-        (when story-category
+        (when (and (str:non-empty-string-p story-title) story-category)
           ;; DEBUG: Let's print some info so we know it works
           (format t "~%Finished fetching '~a' by ~a in ~{~a~^/~}~%" story-title author story-category)
           (format t "~a~%" (concatenate 'string *web-url* uri))
@@ -78,12 +89,21 @@
             (plump-dom:invalid-xml-character (e)
               ;; I don't like ignoring errors. We should handle this ...
               (declare (ignore e))
-              (format t "There was an invalid character in the response. :(")
+              (format t "There was an invalid character in the response. :(~%")
               (unless (directory (merge-pathnames path "*.html"))
                 (uiop:delete-directory-tree path :validate t)))))))))
 
-(defun new--fetch-all-stories ()
+(defun new--fetch-all-stories (&key (from 0) (process 10))
   "Attempt to fetch all stories that have been archived."
   (let ((target-uri (quri:url-encode "fanfiction.net/read.php?storyid=*")))
-    (with-cdx-query (target-uri :map-with #'parse-cdx-response)
-      (mapcan #'new--fetch-story (remove-if #'null response)))))
+
+    (unless *all-stories-cdx-response*
+      (with-cdx-query (target-uri :map-with #'parse-cdx-response)
+        (setf *all-stories-cdx-response* (remove-if #'null response))))
+
+    (loop :with mementos := (nthcdr from *all-stories-cdx-response*)
+          :for memento :in mementos
+          :for i :to process
+          :do (new--fetch-story memento))
+
+    (+ from process)))
