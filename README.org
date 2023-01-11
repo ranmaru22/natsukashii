@@ -42,6 +42,9 @@ written in Common Lisp for a reason.
   written before everything went Unicode. The parser tries its best to just work
   with those (you might get weird black blocks in the output sometimes, though),
   but sometimes it can't. In those cases, the story won't be fetched.
+- It's possible that you get a network socket error during a fetch, especially
+  if you run the scraper with a lot of parallel threads. This will drop you into
+  the debugger. Retrying usually helps.
 
 
 ** How to use
@@ -128,6 +131,31 @@ You can also attempt to fetch a single story by using the memento for it:
 #+begin_src lisp
   (new--fetch-story memento)
 #+end_src
+
+
+** Format of fetched stories
+
+The stories will be saved as HTML files (with all scripts stripped) in the =out/=
+folder inside the project root. The directory structure is Category > Work >
+Author > Story. Author name and story name will be sanitized.
+
+In order to actually search for a story I recommend a tool like [[https://github.com/BurntSushi/ripgrep][Ripgrep]].
+
+#+begin_src sh
+  rg -l -i "foobar"
+#+end_src
+
+This will show you a list of all stories which contain the word "foobar",
+case-insensitive.
+
+#+begin_src sh
+  rg --files | rg -i ".*/.*--200101.*"
+#+end_src
+
+This will give you list of all stories archived in January of 2001 (it matches
+the timestamp in the filename).
+
+For more detailed explanations, take a look at the Ripgrep manual.
 
 
 ** A word of advice

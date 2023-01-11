@@ -34,35 +34,37 @@ don't have to refetch it every time as it can be quite huge.")
   "Attempt to download a story from MEMENTO from the Web Archive."
   (let* ((timestamp (memento-timestamp memento))
          (uri (format nil "~a/~a" timestamp (memento-url memento)))
-         (dom
-           (handler-case (dex:get (concatenate 'string *web-url* uri))
-             (dex:http-request-not-found (e)
-               (declare (ignore e)))
-             (dex:http-request-service-unavailable (e)
-               (declare (ignore e))))))
+         (retry-request (dex:retry-request 5 :interval 3))
+         (dom (handler-bind ((dex:http-request-failed retry-request))
+                (dex:get (concatenate 'string *web-url* uri)))))
 
     (when dom
       (let* ((dom (plump:parse dom))
-             ;; Gotta love 90s website structures. :)
              (first-cat-index
                (position "subcats.php"
-                         (lquery:$ dom "td a" (combine (attr :href) (render-text)))
+                         (lquery:$ dom "a" (combine (attr :href) (render-text)))
                          :key #'car :test #'str:containsp))
              (last-cat-index
                (when first-cat-index
                  (position "list.php"
-                           (lquery:$ dom "td a" (combine (attr :href) (render-text)))
+                           (lquery:$ dom "a" (combine (attr :href) (render-text)))
                            :start (1+ first-cat-index)
                            :key #'car :test (complement #'str:containsp))))
              (story-title
                (str:pascal-case
-                (lquery:$1 dom "td a~b" (render-text))))
+                (or
+                 (lquery:$1 dom "td a~b" (render-text))
+                 ;; For old stories that don't bolden the title, we have to fallback to regex
+                 ;; because the text leaf is not contained in ANY element. Yay.
+                 (ppcre:register-groups-bind (title)
+                     (".+ (?:»|>>) .+ (?:»|>>) (.+)\\n" (lquery:$1 dom (text)))
+                   title))))
              (story-category
                (when first-cat-index
                  (format-categories
                   (map 'list #'cadr
                        (subseq
-                        (lquery:$ dom "td a"
+                        (lquery:$ dom "a"
                           (combine (attr :href) (render-text)))
                         first-cat-index
                         last-cat-index)))))
@@ -76,14 +78,14 @@ don't have to refetch it every time as it can be quite huge.")
              (filename
                (make-pathname :name (format nil "~a~@[-Ch~A~]--~a" story-title chapter timestamp) :type "html")))
 
-        (when (and (str:non-empty-string-p story-title) story-category)
+        (when story-category
           ;; DEBUG: Let's print some info so we know it works
           (format t "~%Finished fetching '~a' by ~a in ~{~a~^/~}~%" story-title author story-category)
           (format t "~a~%" (concatenate 'string *web-url* uri))
 
           (ensure-directories-exist path)
-          (handler-case (lquery:$1 dom "body"
-                          (strip-scripts)
+          (handler-case (lquery:$ dom "body"
+                          (each #'strip-scripts :replace t)
                           (write-to-file (merge-pathnames path filename) :if-exists :rename))
 
             (plump-dom:invalid-xml-character (e)

@@ -27,12 +27,9 @@
   "Attempt to download a story from MEMENTO from the Web Archive."
   (let* ((timestamp (memento-timestamp memento))
          (uri (format nil "~a/~a" timestamp (memento-url memento)))
-         (dom
-           (handler-case (dex:get (concatenate 'string *web-url* uri))
-             (dex:http-request-not-found (e)
-               (declare (ignore e)))
-             (dex:http-request-service-unavailable (e)
-               (declare (ignore e))))))
+         (retry-request (dex:retry-request 5 :interval 3))
+         (dom (handler-bind ((dex:http-request-failed retry-request))
+                (dex:get (concatenate 'string *web-url* uri)))))
 
     (when dom
       (let* ((dom (plump:parse dom))
