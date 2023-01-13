@@ -9,6 +9,7 @@
   :depends-on (#:cl-ppcre
                #:str
                #:dexador
+               #:usocket
                #:quri
                #:plump
                #:lquery
