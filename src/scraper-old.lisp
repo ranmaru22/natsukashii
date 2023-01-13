@@ -28,7 +28,10 @@
   (let* ((timestamp (memento-timestamp memento))
          (uri (format nil "~a/~a" timestamp (memento-url memento)))
          (retry-request (dex:retry-request 5 :interval 3))
-         (dom (handler-bind ((dex:http-request-failed retry-request))
+         (dom (handler-bind ((dex:http-request-failed retry-request)
+                             (usocket:socket-error retry-request)
+                             #+sbcl (sb-int:simple-stream-error retry-request)
+                             #+sbcl (sb-sys:io-timeout retry-request))
                 (dex:get (concatenate 'string *web-url* uri)))))
 
     (when dom
