@@ -9,13 +9,15 @@
   :depends-on (#:cl-ppcre
                #:str
                #:dexador
+               #:usocket
                #:quri
                #:plump
                #:lquery
                #:lparallel)
-  :components ((:file "package")
-               (:file "config" :depends-on ("package"))
-               (:file "utils" :depends-on ("config"))
-               (:file "scraper-old" :depends-on ("utils"))
-               (:file "scraper-new" :depends-on ("utils"))
-               (:file "main" :depends-on ("scraper-old" "scraper-new"))))
+  :components ((:module "src"
+                :components
+                ((:file "package")
+                 (:file "config" :depends-on ("package"))
+                 (:file "utils" :depends-on ("config"))
+                 (:file "scraper-old" :depends-on ("utils"))
+                 (:file "scraper-new" :depends-on ("utils"))))))

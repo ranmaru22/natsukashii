@@ -1,6 +1,6 @@
 * natsukashii 懐かしい
 
-/*natsukashii* -- nostalgic, reminiscent of good memories, something that is yearned for./
+*natsukashii* -- /nostalgic, reminiscent of good memories, something that is yearned for./
 
 ** About
 
@@ -25,7 +25,16 @@ fix these errors on the go.
 You can also better interact with the individual functions that way. This is
 written in Common Lisp for a reason.
 
-*** Known issuesn
+I recommend using SBCL as your CL implementation. I try to handle most API
+errors you might encounter along the way, and at some point that includes
+dipping into ~sb-int~ and ~sb-sys~ to handle IO and stream errors. With other
+implementations, you will probably have to handle those yourself. They do pop up
+sometimes, especially when you run many threads at the same time.
+
+With SBCL, I can mostly run thousands of requests without having to manually
+handle an error (and if I do, it's usually that the API is down or something).
+
+*** Known issues
 - Most stories have only one archived chapter. This is mostly chapter 1 but it
   might be a later one, too. Because each chapter is its own archived memento,
   they all get processed as single files. So you will have =Story1-Ch1= and
@@ -38,6 +47,11 @@ written in Common Lisp for a reason.
   fails. This is usually the case when the memento only contains "Story not
   found" (in which case it's supposed to not pull it!) but it could have false
   positives too.
+- Some stories contain invalid XML chracters. Note that most of them were
+  written before everything went Unicode. The parser tries its best to just work
+  with those (you might get weird black blocks in the output sometimes, though),
+  but sometimes it can't. In those cases, the story won't be fetched.
+
 
 ** How to use
 
@@ -53,6 +67,8 @@ You have then two different sets of scrapers, ~old--~ and ~new--~. This is becau
 the whole website structure of ff.net changed in September 2001 and you
 essentially have to process any memento from before that different.
 
+*** Scraper for old stories (pre September 2001)
+
 To use the old scraper you can do this:
 
 #+begin_src lisp
@@ -61,7 +77,9 @@ To use the old scraper you can do this:
 
 This will pull *everything* that was archived under the old website (pre
 2001-11). This isn't too much, about 3000 pages give or take, so pulling them
-all is possible in one go. For more fine grained controll you can use these:
+all is possible in one go.
+
+For more fine grained controll you can use these:
 
 #+begin_src lisp
   (old--fetch-stories-in-category "anime")
@@ -82,6 +100,12 @@ of:
 - "poetries"
 - "tvshows"
 
+The function is concurrent, and will by default run eight threads in
+parallel. You can change this value by using the keyword argument ~:threads~, but
+please keep in mind that firing too many requests at one is a strain on the API.
+
+*** Scraper for newer stories (Septemter 2001 and later)
+
 The new scraper works a bit different. You use it like this:
 
 #+begin_src lisp
@@ -89,17 +113,63 @@ The new scraper works a bit different. You use it like this:
 #+end_src
 
 This will then first pull a list of *all* available stories from the CDX API
-(which should be over 60,000), and then attempt to download 100 of them,
-starting at index 0. The function will return the index at which it stopped
-pulling, so to continue later, you can simply call the function again with ~:from~
-set to whatever was returned in the last iteration to continue.
+(which should be over 60,000 with the default settings), and then attempt to
+download 100 of them, starting at index 0. The function will return the index at
+which it stopped pulling, so to continue later, you can simply call the function
+again with ~:from~ set to whatever was returned in the last iteration to continue.
 
 That way you don't have to download all of them in one go, which might take a
 very long time, and is error-prone b/c sometimes the Wayback API is very slow
 and unresponsive (but it's free, so no bad feelings about it)!
 
-Also please respect that this API is free and don't fire thousands of requests
-against it. Be respectful!
+This function also is concurrent and runs eight threads by default. Again, you
+can change this with the ~:threads~ keyword.
 
-More detailed documentation will come. For now, check the code to see what's
-available.
+The initial CDX response will be saved in the special variable
+~*all-stories-cdx-response*~ which is available to you as well. If you want to
+access one story specifically, you can call ~nth~ on that list to get the memento
+out. It'll contain the URL that the Wayback Machine wants so you can put it in
+there and view the memento online as well (e.g. to check a story that has failed
+to download).
+
+You can also attempt to fetch a single story by using the memento for it:
+
+#+begin_src lisp
+  (new--fetch-story memento)
+#+end_src
+
+Note that the default settings only pulls up until 2002. You can easily change
+that by editing =*cdx-url*= (in =config.lisp=). It by default has the ~to=2000~
+parameter, which you can change to anything you like. You can even specify exact
+dates with it. It has the same format as the timestamp.
+
+
+** Format of fetched stories
+
+The stories will be saved as HTML files (with all scripts stripped) in the =out/=
+folder inside the project root. The directory structure is Category > Work >
+Author > Story. Author name and story name will be sanitized.
+
+In order to actually search for a story I recommend a tool like [[https://github.com/BurntSushi/ripgrep][Ripgrep]].
+
+#+begin_src sh
+  rg -l -i "foobar"
+#+end_src
+
+This will show you a list of all stories which contain the word "foobar",
+case-insensitive.
+
+#+begin_src sh
+  rg --files | rg -i ".*/.*--200101.*"
+#+end_src
+
+This will give you list of all stories archived in January of 2001 (it matches
+the timestamp in the filename).
+
+For more detailed explanations, take a look at the Ripgrep manual.
+
+
+** A word of advice
+
+Please respect that this API is free and don't fire thousands of requests
+against it. Be respectful!

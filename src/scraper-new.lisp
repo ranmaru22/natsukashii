@@ -34,35 +34,40 @@ don't have to refetch it every time as it can be quite huge.")
   "Attempt to download a story from MEMENTO from the Web Archive."
   (let* ((timestamp (memento-timestamp memento))
          (uri (format nil "~a/~a" timestamp (memento-url memento)))
-         (dom
-           (handler-case (dex:get (concatenate 'string *web-url* uri))
-             (dex:http-request-not-found (e)
-               (declare (ignore e)))
-             (dex:http-request-service-unavailable (e)
-               (declare (ignore e))))))
+         (retry-request (dex:retry-request 5 :interval 3))
+         (dom (handler-bind ((dex:http-request-failed retry-request)
+                             (usocket:socket-error retry-request)
+                             #+sbcl (sb-int:simple-stream-error retry-request)
+                             #+sbcl (sb-sys:io-timeout retry-request))
+                (dex:get (concatenate 'string *web-url* uri)))))
 
     (when dom
       (let* ((dom (plump:parse dom))
-             ;; Gotta love 90s website structures. :)
              (first-cat-index
                (position "subcats.php"
-                         (lquery:$ dom "td a" (combine (attr :href) (render-text)))
+                         (lquery:$ dom "a" (combine (attr :href) (render-text)))
                          :key #'car :test #'str:containsp))
              (last-cat-index
                (when first-cat-index
                  (position "list.php"
-                           (lquery:$ dom "td a" (combine (attr :href) (render-text)))
+                           (lquery:$ dom "a" (combine (attr :href) (render-text)))
                            :start (1+ first-cat-index)
                            :key #'car :test (complement #'str:containsp))))
              (story-title
                (str:pascal-case
-                (lquery:$1 dom "td a~b" (render-text))))
+                (or
+                 (lquery:$1 dom "td a~b" (render-text))
+                 ;; For old stories that don't bolden the title, we have to fallback to regex
+                 ;; because the text leaf is not contained in ANY element. Yay.
+                 (ppcre:register-groups-bind (title)
+                     (".+ (?:»|>>) .+ (?:»|>>) (.+)\\n" (lquery:$1 dom (text)))
+                   title))))
              (story-category
                (when first-cat-index
                  (format-categories
                   (map 'list #'cadr
                        (subseq
-                        (lquery:$ dom "td a"
+                        (lquery:$ dom "a"
                           (combine (attr :href) (render-text)))
                         first-cat-index
                         last-cat-index)))))
@@ -72,11 +77,11 @@ don't have to refetch it every time as it can be quite huge.")
                             (lquery:$ dom "td a" (combine (attr :href) (render-text)))
                             :key #'car :test #'str:containsp))))
              (chapter (new--get-current-chapter dom))
-             (path (make-pathname :directory `(:relative "out" ,@story-category ,author)))
+             (path (make-pathname :directory `(:relative "../out" ,@story-category ,author)))
              (filename
                (make-pathname :name (format nil "~a~@[-Ch~A~]--~a" story-title chapter timestamp) :type "html")))
 
-        (when (and (str:non-empty-string-p story-title) story-category)
+        (when story-category
           ;; DEBUG: Let's print some info so we know it works
           (format t "~%Finished fetching '~a' by ~a in ~{~a~^/~}~%" story-title author story-category)
           (format t "~a~%" (concatenate 'string *web-url* uri))
@@ -84,7 +89,7 @@ don't have to refetch it every time as it can be quite huge.")
           (ensure-directories-exist path)
           (handler-case (lquery:$ dom "body"
                           (each #'strip-scripts :replace t)
-                          (write-to-file (merge-pathnames path filename) :if-exists :rename))
+                          (write-to-file (merge-pathnames path filename)))
 
             (plump-dom:invalid-xml-character (e)
               ;; I don't like ignoring errors. We should handle this ...
@@ -93,18 +98,15 @@ don't have to refetch it every time as it can be quite huge.")
               (unless (directory (merge-pathnames path "*.html"))
                 (uiop:delete-directory-tree path :validate t)))))))))
 
-(defun new--fetch-all-stories (&key (from 0) (process 10))
+(defun new--fetch-all-stories (&key (from 0) (process 10) (threads 8))
   "Attempt to fetch all stories that have been archived."
-  (let ((target-uri (quri:url-encode "fanfiction.net/read.php?storyid=*")))
+  (unless lparallel:*kernel* (setf lparallel:*kernel* (lparallel:make-kernel threads)))
 
-    (unless *all-stories-cdx-response*
-      (with-cdx-query (target-uri :map-with #'parse-cdx-response)
+  (unless *all-stories-cdx-response*
+    (with-cdx-query (*story-url* :map-with #'parse-cdx-response)
         (setf *all-stories-cdx-response* (remove-if #'null response))))
 
-    (loop :with mementos := (nthcdr from *all-stories-cdx-response*)
-          :for memento :in mementos
-          :for i :below process
-          :do (format t "~%Attempting to fetch story ~a" (+ from i))
-              (new--fetch-story memento))
+  (let ((pool (subseq *all-stories-cdx-response* from (+ from process))))
+    (lparallel:pmapc #'new--fetch-story pool))
 
-    (+ from process)))
+  (+ from process))
