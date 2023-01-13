@@ -37,8 +37,8 @@ don't have to refetch it every time as it can be quite huge.")
          (retry-request (dex:retry-request 5 :interval 3))
          (dom (handler-bind ((dex:http-request-failed retry-request)
                              (usocket:socket-error retry-request)
-                             (sb-int:simple-stream-error retry-request)
-                             (sb-sys:io-timeout retry-request))
+                             #+sbcl (sb-int:simple-stream-error retry-request)
+                             #+sbcl (sb-sys:io-timeout retry-request))
                 (dex:get (concatenate 'string *web-url* uri)))))
 
     (when dom

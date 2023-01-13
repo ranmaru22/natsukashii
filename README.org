@@ -25,6 +25,15 @@ fix these errors on the go.
 You can also better interact with the individual functions that way. This is
 written in Common Lisp for a reason.
 
+I recommend using SBCL as your CL implementation. I try to handle most API
+errors you might encounter along the way, and at some point that includes
+dipping into ~sb-int~ and ~sb-sys~ to handle IO and stream errors. With other
+implementations, you will probably have to handle those yourself. They do pop up
+sometimes, especially when you run many threads at the same time.
+
+With SBCL, I can mostly run thousands of requests without having to manually
+handle an error (and if I do, it's usually that the API is down or something).
+
 *** Known issues
 - Most stories have only one archived chapter. This is mostly chapter 1 but it
   might be a later one, too. Because each chapter is its own archived memento,
@@ -42,9 +51,6 @@ written in Common Lisp for a reason.
   written before everything went Unicode. The parser tries its best to just work
   with those (you might get weird black blocks in the output sometimes, though),
   but sometimes it can't. In those cases, the story won't be fetched.
-- It's possible that you get a network socket error during a fetch, especially
-  if you run the scraper with a lot of parallel threads. This will drop you into
-  the debugger. Retrying usually helps.
 
 
 ** How to use
@@ -107,10 +113,10 @@ The new scraper works a bit different. You use it like this:
 #+end_src
 
 This will then first pull a list of *all* available stories from the CDX API
-(which should be over 60,000), and then attempt to download 100 of them,
-starting at index 0. The function will return the index at which it stopped
-pulling, so to continue later, you can simply call the function again with ~:from~
-set to whatever was returned in the last iteration to continue.
+(which should be over 60,000 with the default settings), and then attempt to
+download 100 of them, starting at index 0. The function will return the index at
+which it stopped pulling, so to continue later, you can simply call the function
+again with ~:from~ set to whatever was returned in the last iteration to continue.
 
 That way you don't have to download all of them in one go, which might take a
 very long time, and is error-prone b/c sometimes the Wayback API is very slow
@@ -131,6 +137,11 @@ You can also attempt to fetch a single story by using the memento for it:
 #+begin_src lisp
   (new--fetch-story memento)
 #+end_src
+
+Note that the default settings only pulls up until 2002. You can easily change
+that by editing =*cdx-url*= (in =config.lisp=). It by default has the ~to=2000~
+parameter, which you can change to anything you like. You can even specify exact
+dates with it. It has the same format as the timestamp.
 
 
 ** Format of fetched stories
