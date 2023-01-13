@@ -44,7 +44,7 @@
                (str:pascal-case
                 (lquery:$1 dom "td.TextBlack>b" (contains "Author") (next "a") (render-text))))
              (chapter (old--get-current-chapter dom))
-             (path (make-pathname :directory `(:relative "out" ,@story-category ,author)))
+             (path (make-pathname :directory `(:relative "../out" ,@story-category ,author)))
              (filename
                (make-pathname :name (format nil "~a~@[-Ch~A~]--~a" story-title chapter timestamp) :type "html")))
 
@@ -56,7 +56,7 @@
           (ensure-directories-exist path)
           (handler-case (lquery:$ dom "body"
                           (each #'strip-scripts :replace t)
-                          (write-to-file (merge-pathnames path filename) :if-exists :rename))
+                          (write-to-file (merge-pathnames path filename)))
 
             (plump-dom:invalid-xml-character (e)
               ;; I don't like ignoring errors. We should handle this ...
@@ -67,12 +67,8 @@
 
 (defun old--fetch-stories-in-category (category &key (threads 8))
   "Attempt to grab all archived stories in CATEGORY."
-  (let ((target-uri
-          (quri:url-encode
-           (format nil "fanfiction.net/sections/~a/index.fic?action=story-read*" category))))
-
-    (unless lparallel:*kernel*
-      (setf lparallel:*kernel* (lparallel:make-kernel threads)))
+  (let ((target-uri (format nil "fanfiction.net/sections/~a/index.fic?action=story-read*" category)))
+    (unless lparallel:*kernel* (setf lparallel:*kernel* (lparallel:make-kernel threads)))
 
     (with-cdx-query (target-uri :map-with #'parse-cdx-response)
       (lparallel:pmapc #'old--fetch-story (remove-if #'null response)))))

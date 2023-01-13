@@ -7,7 +7,8 @@
 Optionally map the results with MAP-WITH.
 The macro provides the anaphors RESPONSE and STATUS-CODE."
   (let ((return-value (gensym)))
-    `(multiple-value-bind (,return-value status-code) (dex:get (concatenate 'string *cdx-url* ,uri))
+    `(multiple-value-bind (,return-value status-code)
+         (dex:get (concatenate 'string *cdx-url* (quri:url-encode ,uri)))
        (when (and (eql status-code 200) (str:non-empty-string-p ,return-value))
          (let ((response
                  (if ,map-with

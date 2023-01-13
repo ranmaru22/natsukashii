@@ -74,7 +74,7 @@ don't have to refetch it every time as it can be quite huge.")
                             (lquery:$ dom "td a" (combine (attr :href) (render-text)))
                             :key #'car :test #'str:containsp))))
              (chapter (new--get-current-chapter dom))
-             (path (make-pathname :directory `(:relative "out" ,@story-category ,author)))
+             (path (make-pathname :directory `(:relative "../out" ,@story-category ,author)))
              (filename
                (make-pathname :name (format nil "~a~@[-Ch~A~]--~a" story-title chapter timestamp) :type "html")))
 
@@ -86,7 +86,7 @@ don't have to refetch it every time as it can be quite huge.")
           (ensure-directories-exist path)
           (handler-case (lquery:$ dom "body"
                           (each #'strip-scripts :replace t)
-                          (write-to-file (merge-pathnames path filename) :if-exists :rename))
+                          (write-to-file (merge-pathnames path filename)))
 
             (plump-dom:invalid-xml-character (e)
               ;; I don't like ignoring errors. We should handle this ...
@@ -97,16 +97,13 @@ don't have to refetch it every time as it can be quite huge.")
 
 (defun new--fetch-all-stories (&key (from 0) (process 10) (threads 8))
   "Attempt to fetch all stories that have been archived."
-  (let ((target-uri (quri:url-encode "fanfiction.net/read.php?storyid=*")))
+  (unless lparallel:*kernel* (setf lparallel:*kernel* (lparallel:make-kernel threads)))
 
-    (unless *all-stories-cdx-response*
-      (with-cdx-query (target-uri :map-with #'parse-cdx-response)
+  (unless *all-stories-cdx-response*
+    (with-cdx-query (*story-url* :map-with #'parse-cdx-response)
         (setf *all-stories-cdx-response* (remove-if #'null response))))
 
-    (unless lparallel:*kernel*
-      (setf lparallel:*kernel* (lparallel:make-kernel threads)))
+  (let ((pool (subseq *all-stories-cdx-response* from (+ from process))))
+    (lparallel:pmapc #'new--fetch-story pool))
 
-    (let ((pool (subseq *all-stories-cdx-response* from (+ from process))))
-      (lparallel:pmapc #'new--fetch-story pool))
-
-    (+ from process)))
+  (+ from process))
