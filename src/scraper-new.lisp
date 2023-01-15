@@ -21,14 +21,41 @@ don't have to refetch it every time as it can be quite huge.")
           (coerce
            (lquery:$ dom "script"
              (render-text)
-             (map (lambda (txt)
-                    (ppcre:register-groups-bind (chapter)
-                        ("var chapter = (\\d);" txt)
-                      chapter)))
+             (map (lambda (txt) (ppcre:register-groups-bind (chapter) ("var chapter = (\\d);" txt) chapter)))
              (filter (complement #'null)))
            'list)))
 
     (when (every #'eql list (cdr list)) (car list))))
+
+(defun new--get-story-title (dom)
+  "Attempt to get the title of a story from DOM."
+  (str:pascal-case
+   (or
+    (lquery:$1 dom "td a~b" (render-text))
+    ;; For old stories that don't bolden the title, we have to fallback to regex
+    ;; because the text leaf is not contained in ANY element. Yay.
+    (ppcre:register-groups-bind (title) (".+ (?:»|>>) .+ (?:»|>>) (.+)\\n" (lquery:$1 dom (text))) title))))
+
+(defun new--get-story-categories (dom)
+  "Attempt to get the categories of a story from DOM."
+  (let* ((beg (position "subcats.php"
+                        (lquery:$ dom "a" (combine (attr :href) (render-text)))
+                        :key #'car :test #'str:containsp))
+         (end (when beg
+                (position "list.php"
+                          (lquery:$ dom "a" (combine (attr :href) (render-text)))
+                          :start (1+ beg) :key #'car :test (complement #'str:containsp)))))
+    (when (and beg end)
+      (format-categories
+       (map 'list #'cadr
+            (subseq (lquery:$ dom "a" (combine (attr :href) (render-text))) beg end))))))
+
+(defun new--get-story-author (dom)
+  "Attempt to get the author of a story from DOM."
+  (str:pascal-case
+   (cadr (find "profile.php"
+               (lquery:$ dom "td a" (combine (attr :href) (render-text)))
+               :key #'car :test #'str:containsp))))
 
 (defun new--fetch-story (memento)
   "Attempt to download a story from MEMENTO from the Web Archive."
@@ -43,47 +70,15 @@ don't have to refetch it every time as it can be quite huge.")
 
     (when dom
       (let* ((dom (plump:parse dom))
-             (first-cat-index
-               (position "subcats.php"
-                         (lquery:$ dom "a" (combine (attr :href) (render-text)))
-                         :key #'car :test #'str:containsp))
-             (last-cat-index
-               (when first-cat-index
-                 (position "list.php"
-                           (lquery:$ dom "a" (combine (attr :href) (render-text)))
-                           :start (1+ first-cat-index)
-                           :key #'car :test (complement #'str:containsp))))
-             (story-title
-               (str:pascal-case
-                (or
-                 (lquery:$1 dom "td a~b" (render-text))
-                 ;; For old stories that don't bolden the title, we have to fallback to regex
-                 ;; because the text leaf is not contained in ANY element. Yay.
-                 (ppcre:register-groups-bind (title)
-                     (".+ (?:»|>>) .+ (?:»|>>) (.+)\\n" (lquery:$1 dom (text)))
-                   title))))
-             (story-category
-               (when first-cat-index
-                 (format-categories
-                  (map 'list #'cadr
-                       (subseq
-                        (lquery:$ dom "a"
-                          (combine (attr :href) (render-text)))
-                        first-cat-index
-                        last-cat-index)))))
-             (author
-               (str:pascal-case
-                (cadr (find "profile.php"
-                            (lquery:$ dom "td a" (combine (attr :href) (render-text)))
-                            :key #'car :test #'str:containsp))))
+             (title (new--get-story-title dom))
+             (categories (new--get-story-categories dom))
+             (author (new--get-story-author dom))
              (chapter (new--get-current-chapter dom))
-             (path (make-pathname :directory `(:relative "../out" ,@story-category ,author)))
-             (filename
-               (make-pathname :name (format nil "~a~@[-Ch~A~]--~a" story-title chapter timestamp) :type "html")))
+             (path (make-pathname :directory `(:relative "../out" ,@categories ,author)))
+             (filename (make-pathname :name (format nil "~a~@[-Ch~A~]--~a" title chapter timestamp) :type "html")))
 
-        (when story-category
-          ;; DEBUG: Let's print some info so we know it works
-          (format t "~%Finished fetching '~a' by ~a in ~{~a~^/~}~%" story-title author story-category)
+        (when categories
+          (format t "~%Finished fetching '~a' by ~a in ~{~a~^/~}~%" title author categories)
           (format t "~a~%" (concatenate 'string *web-url* uri))
 
           (ensure-directories-exist path)
@@ -104,9 +99,9 @@ don't have to refetch it every time as it can be quite huge.")
 
   (unless *all-stories-cdx-response*
     (with-cdx-query (*story-url* :map-with #'parse-cdx-response)
-        (setf *all-stories-cdx-response* (remove-if #'null response))))
+      (setf *all-stories-cdx-response* (remove-if #'null response))))
 
-  (let ((pool (subseq *all-stories-cdx-response* from (+ from process))))
-    (lparallel:pmapc #'new--fetch-story pool))
-
-  (+ from process))
+  (let* ((to (min (length *all-stories-cdx-response*) (+ from process)))
+         (pool (subseq *all-stories-cdx-response* from to)))
+    (lparallel:pmapc #'new--fetch-story pool)
+    to))

@@ -23,6 +23,18 @@
 
     (when (every #'eql list (cdr list)) (car list))))
 
+(defun old--get-story-title (dom)
+  "Attept to get the title of a story from DOM."
+  (str:pascal-case (lquery:$1 dom "tr.TableHeading>td.TextWhiteHeading>b" (render-text))))
+
+(defun old--get-story-categories (dom)
+  "Attempt to get the categories of a story from DOM."
+  (format-categories (lquery:$ dom "td.TextBlack>b" (contains "Category:") (next-all "a") (render-text))))
+
+(defun old--get-story-author (dom)
+  "Attempt to get the author of a story from DOM."
+  (str:pascal-case (lquery:$1 dom "td.TextBlack>b" (contains "Author") (next "a") (render-text))))
+
 (defun old--fetch-story (memento)
   "Attempt to download a story from MEMENTO from the Web Archive."
   (let* ((timestamp (memento-timestamp memento))
@@ -36,24 +48,15 @@
 
     (when dom
       (let* ((dom (plump:parse dom))
-             ;; Gotta love 90s website structures. :)
-             (story-title
-               (str:pascal-case
-                (lquery:$1 dom "tr.TableHeading>td.TextWhiteHeading>b" (render-text))))
-             (story-category
-               (format-categories
-                (lquery:$ dom "td.TextBlack>b" (contains "Category:") (next-all "a") (render-text))))
-             (author
-               (str:pascal-case
-                (lquery:$1 dom "td.TextBlack>b" (contains "Author") (next "a") (render-text))))
+             (title (old--get-story-title dom))
+             (categories (old--get-story-categories dom))
+             (author (old--get-story-author dom))
              (chapter (old--get-current-chapter dom))
-             (path (make-pathname :directory `(:relative "../out" ,@story-category ,author)))
-             (filename
-               (make-pathname :name (format nil "~a~@[-Ch~A~]--~a" story-title chapter timestamp) :type "html")))
+             (path (make-pathname :directory `(:relative "../out" ,@categories ,author)))
+             (filename (make-pathname :name (format nil "~a~@[-Ch~A~]--~a" title chapter timestamp) :type "html")))
 
-        (when story-category
-          ;; DEBUG: Let's print some info so we know it works
-          (format t "~%Finished fetching '~a' by ~a in ~{~a~^/~}~%" story-title author story-category)
+        (when categories
+          (format t "~%Finished fetching '~a' by ~a in ~{~a~^/~}~%" title author categories)
           (format t "~a~%" (concatenate 'string *web-url* uri))
 
           (ensure-directories-exist path)
